@@ -8,25 +8,169 @@
         body { background-color: #f8f9fa; padding: 40px; }
         h1 { text-align: center; margin-bottom: 30px; }
         .form-container { max-width: 500px; margin: auto; }
+        .size-label { font-weight: bold; color: #dc3545; }
     </style>
 </head>
 <body>
+
     <div class="form-container card shadow-sm p-4">
         <h1>Upload Image</h1>
+        
+
         <form action="/filter" method="post" enctype="multipart/form-data">
             <div class="mb-3">
                 <label>Select Image</label>
                 <input type="file" name="image" class="form-control" required>
             </div>
             <div class="mb-3">
-                <label>Intensity (0–50)</label>
+                <label>Filter Intensity (0-50)</label>
                 <input type="number" name="intensity" class="form-control" min="0" max="50" value="25">
+            </div>
+            <div class="mb-3">
+                <label class="size-label">Image Scale/Size (CPU Intensive!)</label>
+                <input type="range" name="scale" class="form-range" min="1" max="10" value="3" 
+                       oninput="updateSizeLabel(this.value)">
+                <div id="sizeLabel" class="form-text">
+                    Scale: 3x (Medium) - Estimated Processing: 2-5 seconds
+                </div>
+                <div class="form-text text-danger">
+                    Warning: Higher scales will significantly increase CPU usage and processing time!
+                </div>
             </div>
             <button type="submit" class="btn btn-primary w-100">Apply All Filters</button>
         </form>
+        
+        <hr>
+        
+
+        <form action="/use-random-image" method="post">
+            <div class="mb-3">
+                <label>Use Random Image</label>
+                <input type="number" name="intensity" class="form-control" min="0" max="50" value="25">
+            </div>
+            <div class="mb-3">
+                <label class="size-label">Image Scale/Size (CPU Intensive!)</label>
+                <input type="range" name="scale" class="form-range" min="1" max="10" value="3"
+                       oninput="updateSizeLabel(this.value, 'randomSizeLabel')">
+                <div id="randomSizeLabel" class="form-text">
+                    Scale: 3x (Medium) - Estimated Processing: 2-5 seconds
+                </div>
+                <div class="form-text text-danger">
+                    Warning: Higher scales will significantly increase CPU usage and processing time!
+                </div>
+            </div>
+            <button type="submit" class="btn btn-secondary w-100">Use Random Image</button>
+        </form>
+    
+        <hr>
+
+        <div class="multi-upload-section">
+            <h3>Multiple Image Processing (Parallel)</h3>
+            <form id="multiUploadForm" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="multiImages">Select multiple images:</label>
+                    <input type="file" id="multiImages" name="images" multiple accept=".png,.jpg,.jpeg,.bmp,.tiff">
+                </div>
+                <div class="form-group">
+                    <label for="multiIntensity">Filter Intensity (0-50):</label>
+                    <input type="range" id="multiIntensity" name="intensity" min="0" max="50" value="25">
+                    <span id="multiIntensityValue">25</span>
+                </div>
+                <div class="form-group">
+                    <label for="multiScale">Scale Factor (1-10):</label>
+                    <input type="range" id="multiScale" name="scale" min="1" max="10" value="1">
+                    <span id="multiScaleValue">1</span>
+                </div>
+                <button type="button" onclick="processMultipleImages()" class="btn btn-primary">Process Multiple Images</button>
+            </form>
+            <div id="multiProgress" style="display: none;">
+                <h4>Processing Progress</h4>
+                <div class="progress">
+                    <div id="multiProgressBar" class="progress-bar" style="width: 0%"></div>
+                </div>
+                <div id="multiStatus"></div>
+            </div>
+        </div>  
+
+        <hr>
+
         <div class="mt-3 text-center">
             <a href="/logout" class="btn btn-danger">Logout</a>
         </div>
+
     </div>
+
+
+
+    <script>
+    function updateSizeLabel(value, elementId = 'sizeLabel') {
+        const sizes = {
+            1: '1x (Small) - Fast',
+            2: '2x (Medium) - Moderate',
+            3: '3x (Medium) - 2-5 seconds',
+            4: '4x (Large) - 5-10 seconds',
+            5: '5x (Large) - 10-20 seconds',
+            6: '6x (X-Large) - 20-40 seconds',
+            7: '7x (X-Large) - 40-60 seconds',
+            8: '8x (Huge) - 1-2 minutes',
+            9: '9x (Huge) - 2-5 minutes',
+            10: '10x (Extreme) - 5+ minutes'
+        };
+        document.getElementById(elementId).textContent = `Scale: ${sizes[value]} - CPU Intensive`;
+    }
+    </script>
+
+    
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const intensityInput = document.getElementById('multiIntensity');
+        const scaleInput = document.getElementById('multiScale');
+        
+        if (intensityInput) {
+            intensityInput.addEventListener('input', function() {
+                document.getElementById('multiIntensityValue').textContent = this.value;
+            });
+        }
+        
+        if (scaleInput) {
+            scaleInput.addEventListener('input', function() {
+                document.getElementById('multiScaleValue').textContent = this.value;
+            });
+        }
+    });
+
+    function processMultipleImages() {
+        const form = document.getElementById("multiUploadForm");
+        const formData = new FormData(form);
+
+        // Show progress bar
+        document.getElementById("multiProgress").style.display = "block";
+        document.getElementById("multiProgressBar").style.width = "10%";
+        document.getElementById("multiStatus").innerText = "Uploading...";
+
+        fetch("/process-multiple", {
+            method: "POST",
+            body: formData
+        })
+        .then(res => {
+            if (!res.ok) throw new Error("Server error: " + res.statusText);
+            return res.text(); // 🔥 FIX: don’t parse JSON
+        })
+        .then(data => {
+            // update progress bar
+            document.getElementById("multiProgressBar").style.width = "100%";
+            document.getElementById("multiStatus").innerText = "Done! Redirecting...";
+
+            // data should already be HTML (rendered display.html)
+            document.open();
+            document.write(data);
+            document.close();
+        })
+        .catch(err => {
+            document.getElementById("multiStatus").innerText = "Error: " + err.message;
+            document.getElementById("multiProgressBar").classList.add("bg-danger");
+        });
+    }
+    </script>
 </body>
 </html>

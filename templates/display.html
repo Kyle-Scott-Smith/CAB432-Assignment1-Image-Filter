@@ -22,12 +22,24 @@
             border-radius: 4px;
         }
         h1 { text-align: center; margin-bottom: 30px; color: #333; }
+        .processing-info { 
+            background-color: #ffe6e6; 
+            padding: 15px; 
+            border-radius: 5px; 
+            margin-bottom: 20px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Filtered Images</h1>
-        <p class="text-center">Intensity: {{ intensity }}/50</p>
+        
+        <div class="processing-info">
+            <h4>Processing Information</h4>
+            <p>Intensity: {{ intensity }}/50 | Scale: {{ scale }}x</p>
+            <p class="text-muted">Higher scale values significantly increase CPU usage and processing time.</p>
+        </div>
 
         <div class="row">
             {% for name, path in output_files %}
@@ -48,5 +60,37 @@
             <a href="/logout" class="btn btn-danger ms-2">Logout</a>
         </div>
     </div>
+    <!-- Add this to your display.html file -->
+    {% if multi_results %}
+    <div style="margin: 2rem 0;">
+        <h3>Multiple Image Processing Results</h3>
+        
+        {% for result in multi_results %}
+        <div style="border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin-bottom: 2rem; background-color: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <h4>Original: {{ result.original_name }}</h4>
+            
+            {% if result.success %}
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
+                {% for filter_name, filename in result.filters %}
+                <div style="text-align: center; border: 1px solid #eee; padding: 0.5rem; border-radius: 4px;">
+                    <h5 style="margin: 0 0 0.5rem 0; color: #333;">{{ filter_name }}</h5>
+                    <img src="{{ url_for('uploaded_file', filename=filename) }}?t={{ timestamp }}" 
+                        alt="{{ filter_name }} filter" style="max-width: 100%; height: auto; border-radius: 4px;">
+                    <div style="margin-top: 0.5rem;">
+                        <a href="{{ url_for('uploaded_file', filename=filename) }}" download 
+                        style="color: #007bff; text-decoration: none; font-size: 0.9rem;">Download</a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div style="color: #dc3545; padding: 1rem; background-color: #f8d7da; border-radius: 4px;">
+                <strong>Error:</strong> {{ result.error }}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
 </body>
 </html>
