@@ -5,7 +5,6 @@ from functools import wraps
 from filters import apply_filter
 from auth import auth_bp, token_required
 import cv2
-import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -47,7 +46,7 @@ def filter_image():
             return render_template("error.html", message="No image selected"), 400
 
         # Validate file type
-        if not image.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tiff')):
+        if not image.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
             return render_template("error.html", message="Invalid image format"), 400
 
         filename = image.filename
@@ -61,13 +60,13 @@ def filter_image():
         scale = int(request.form.get("scale", 1))
         scale = max(1, min(10, scale))  # Limit scale to 1-10
         
-        print(f"DEBUG: Processing image {filename} with intensity {intensity}, scale {scale}")
+        print(f"Processing image {filename} with intensity {intensity}, scale {scale}")
 
         # Apply scaling to image if needed
         if scale > 1:
             scaled_path = os.path.join(UPLOAD_FOLDER, f"scaled_{filename}")
             scale_image(input_path, scaled_path, scale)
-            input_path = scaled_path  # Use the scaled image for processing
+            input_path = scaled_path
 
         output_files = []
         for filter_name in ALL_FILTERS:
@@ -75,7 +74,7 @@ def filter_image():
                 output_filename = f"{os.path.splitext(filename)[0]}_{filter_name}.png"
                 output_path = os.path.join(UPLOAD_FOLDER, output_filename)
                 
-                print(f"DEBUG: Applying {filter_name} filter...")
+                print(f"Applying {filter_name} filter")
                 apply_filter(input_path, filter_name, output_path, intensity=intensity)
                 
                 # Verify the output file was created
@@ -83,7 +82,7 @@ def filter_image():
                     raise ValueError(f"Filter {filter_name} did not create output file")
                 
                 output_files.append((filter_name, output_filename))
-                print(f"DEBUG: {filter_name} filter completed successfully")
+                print(f"{filter_name} filter completed successfully")
                 
             except Exception as e:
                 print(f"ERROR in {filter_name}: {str(e)}")
@@ -97,7 +96,7 @@ def filter_image():
         return render_template("display.html", 
                              output_files=output_files, 
                              intensity=intensity,
-                             scale=scale,  # Pass scale to template
+                             scale=scale,
                              timestamp=timestamp)
 
     except Exception as e:
@@ -132,7 +131,7 @@ def use_random_image():
         scale = int(request.form.get("scale", 1))
         scale = max(1, min(10, scale))
         
-        print(f"DEBUG: Processing random image {filename} with intensity {intensity}, scale {scale}")
+        print(f"Processing random image {filename} with intensity {intensity}, scale {scale}")
 
         # Apply scaling to image if needed
         if scale > 1:
@@ -147,14 +146,14 @@ def use_random_image():
                 output_filename = f"{os.path.splitext(filename)[0]}_{filter_name}.png"
                 output_path = os.path.join(UPLOAD_FOLDER, output_filename)
                 
-                print(f"DEBUG: Applying {filter_name} filter...")
+                print(f"Applying {filter_name} filter")
                 apply_filter(input_path, filter_name, output_path, intensity=intensity)
                 
                 if not os.path.exists(output_path):
                     raise ValueError(f"Filter {filter_name} did not create output file")
                 
                 output_files.append((filter_name, output_filename))
-                print(f"DEBUG: {filter_name} filter completed successfully")
+                print(f"{filter_name} filter completed successfully")
                 
             except Exception as e:
                 print(f"ERROR in {filter_name}: {str(e)}")
@@ -167,7 +166,7 @@ def use_random_image():
         return render_template("display.html", 
                              output_files=output_files, 
                              intensity=intensity,
-                             scale=scale,  # Pass scale to template
+                             scale=scale,
                              timestamp=timestamp)
 
     except Exception as e:
@@ -177,8 +176,7 @@ def use_random_image():
         return render_template("error.html", message=f"Error processing image: {str(e)}"), 500
 
 def scale_image(input_path, output_path, scale_factor):
-    """Scale image by the given factor - very CPU intensive for large factors"""
-    print(f"DEBUG: Scaling image by factor {scale_factor}...")
+    print(f"Scaling image by factor {scale_factor}")
     
     # Read the image
     img = cv2.imread(input_path)
@@ -190,7 +188,7 @@ def scale_image(input_path, output_path, scale_factor):
     new_width = int(width * scale_factor)
     new_height = int(height * scale_factor)
     
-    print(f"DEBUG: Scaling from {width}x{height} to {new_width}x{new_height}")
+    print(f"Scaling from {width}x{height} to {new_width}x{new_height}")
     
     # Use different interpolation methods based on scale factor
     if scale_factor > 1:
@@ -205,7 +203,7 @@ def scale_image(input_path, output_path, scale_factor):
     
     # Save the scaled image
     cv2.imwrite(output_path, scaled_img)
-    print(f"DEBUG: Image scaled successfully to {new_width}x{new_height}")
+    print(f"Image scaled successfully to {new_width}x{new_height}")
 
 @app.route("/api/random-image", methods=["GET"])
 @login_required
@@ -264,8 +262,6 @@ def api_apply_filter():
 @app.route("/process-multiple", methods=["POST"])
 @login_required
 def process_multiple_images():
-    """Process multiple images in parallel using multithreading - fixed to save files
-    before submitting to threads and avoid using Flask context objects inside threads."""
     try:
         if "images" not in request.files:
             return render_template("error.html", message="No images uploaded"), 400
@@ -274,10 +270,10 @@ def process_multiple_images():
         if not images or images[0].filename == '':
             return render_template("error.html", message="No images selected"), 400
 
-        # Limit to 10 images maximum for performance
+        # Limit to 10 images as more are not possible with ec2 cpu
         if len(images) > 10:
             images = images[:10]
-            print(f"DEBUG: Limited to 10 images for performance")
+            print(f"Limited to 10 images for performance")
 
         intensity = int(request.form.get("intensity", 25))
         intensity = max(0, min(50, intensity))
@@ -285,23 +281,22 @@ def process_multiple_images():
         scale = int(request.form.get("scale", 1))
         scale = max(1, min(10, scale))
 
-        # Capture any context-dependent values now (do not use session inside threads)
         username = session.get("user", "anon")
 
-        print(f"DEBUG: Processing {len(images)} images in parallel with intensity {intensity}, scale {scale}")
+        print(f"Processing {len(images)} images in parallel with intensity {intensity}, scale {scale}")
 
-        # Prepare list of saved input files (main thread saves uploads to disk)
+        # Prepare list of saved input files
         saved_inputs = []
         for image_file in images:
             original_name = image_file.filename
-            if not original_name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tiff')):
-                print(f"WARNING: Skipping invalid format: {original_name}")
+            if not original_name.lower().endswith(('.png', '.jpg', '.jpeg')):
+                print(f"Skipping invalid format: {original_name}")
                 continue
 
             unique_id = uuid.uuid4().hex[:8]
             safe_filename = f"{username}_{unique_id}_{original_name}"
             input_path = os.path.join(UPLOAD_FOLDER, safe_filename)
-            # Save the uploaded file to disk immediately (main thread)
+            # Save the uploaded file to disk immediately
             image_file.save(input_path)
             saved_inputs.append({
                 "original_name": original_name,
@@ -338,8 +333,8 @@ def process_multiple_images():
                         if os.path.exists(output_path):
                             filter_results.append((filter_name, output_filename))
                         else:
-                            # Some filters might not write — treat as failure for that filter
-                            print(f"WARNING: filter {filter_name} produced no output for {safe_filename}")
+                            # Some filters might not write, treat as failure
+                            print(f"filter {filter_name} produced no output for {safe_filename}")
 
                     except Exception as e:
                         print(f"ERROR in image {safe_filename}, filter {filter_name}: {str(e)}")
@@ -367,7 +362,7 @@ def process_multiple_images():
 
         # Determine reasonable worker count
         cpu_count = os.cpu_count() or 1
-        max_workers = min(4, cpu_count, len(saved_inputs))
+        max_workers = min(1, cpu_count, len(saved_inputs))
 
         from concurrent.futures import ThreadPoolExecutor, as_completed
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -378,10 +373,8 @@ def process_multiple_images():
                     res = future.result()
                     results.append(res)
                 except Exception as e:
-                    # Shouldn't normally happen because internal exceptions are caught,
-                    # but guard here as well.
                     item = future_to_item[future]
-                    print(f"ERROR: worker failed for {item.get('safe_filename')}: {str(e)}")
+                    print(f"worker failed for {item.get('safe_filename')}: {str(e)}")
                     results.append({
                         "original": item.get("safe_filename"),
                         "original_name": item.get("original_name"),
@@ -393,7 +386,7 @@ def process_multiple_images():
         successful = sum(1 for r in results if r["success"])
         failed = len(results) - successful
 
-        print(f"DEBUG: Parallel processing completed - {successful} successful, {failed} failed")
+        print(f"Parallel processing completed - {successful} successful, {failed} failed")
 
         timestamp = int(time.time())
         return render_template("display.html",
@@ -416,4 +409,4 @@ def uploaded_file(filename):
     return send_file(file_path)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", debug=True)
+    app.run(host="0.0.0.0", port=8080)
